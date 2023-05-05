@@ -15,6 +15,7 @@ import logging
 import numpy as np
 import pandas
 import scipy.constants
+import json
 from math import pi, sqrt, floor, ceil
 from scipy.spatial.transform import Rotation
 
@@ -1235,7 +1236,6 @@ class Sample(object):
 
         # Check the old bounding box
         if self.number_of_atoms > 0:
-
             # Get the bounding box
             (bx0, by0, bz0), (bx1, by1, bz1) = self.bounding_box
 
@@ -1325,7 +1325,6 @@ class Sample(object):
         for position, rotation, orientation in zip(
             positions, Rotation.from_rotvec(orientations), orientations
         ):
-
             # Make a copy and apply the rotation and translation
             coords = (rotation.apply(reference_coords) + position).astype("float32")
             temp = atoms.data.copy()
@@ -1615,6 +1614,34 @@ class Sample(object):
             str: Some sample info
 
         """
+
+        class NumpyEncoder(json.JSONEncoder):
+            """Special json encoder for numpy types"""
+
+            def default(self, obj):
+                if isinstance(
+                    obj,
+                    (
+                        np.int_,
+                        np.intc,
+                        np.intp,
+                        np.int8,
+                        np.int16,
+                        np.int32,
+                        np.int64,
+                        np.uint8,
+                        np.uint16,
+                        np.uint32,
+                        np.uint64,
+                    ),
+                ):
+                    return int(obj)
+                elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
+                    return float(obj)
+                elif isinstance(obj, (np.ndarray,)):
+                    return obj.tolist()
+                return json.JSONEncoder.default(self, obj)
+
         lines = [
             "Sample information:",
             "    # Molecules:   %d" % self.number_of_molecules,
@@ -1638,7 +1665,8 @@ class Sample(object):
             "    Centre x:      %.2f" % self.centre[0],
             "    Centre y:      %.2f" % self.centre[1],
             "    Centre z:      %.2f" % self.centre[2],
-            "    Shape:         %s" % str(self.shape),
+            "    Shape:         %s"
+            % json.dumps(self.shape, cls=NumpyEncoder, indent=2),
         ]
         for name, molecule in self.iter_molecules():
             molecule_lines = [

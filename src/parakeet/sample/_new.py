@@ -135,7 +135,6 @@ def add_ice(sample, centre=None, shape=None, density=940.0, pack=False):
 
     # Uniform random or packed
     if not pack:
-
         # The water filename
         filename = parakeet.data.get_path("water.cif")
 
@@ -169,7 +168,6 @@ def add_ice(sample, centre=None, shape=None, density=940.0, pack=False):
         H2 = rotation.apply(water_coords.iloc[2].copy()) + translation
 
         def create_atom_data(atomic_number, coords):
-
             # Create a new array
             def new_array(size, name, value):
                 return (
@@ -207,7 +205,6 @@ def add_ice(sample, centre=None, shape=None, density=940.0, pack=False):
         sample.add_atoms(AtomData(data=pandas.concat(data_buffer, ignore_index=True)))
 
     else:
-
         # Van der Waals radius of water
         van_der_waals_radius = 2.7 / 2.0  # A
 
@@ -256,7 +253,6 @@ def add_ice(sample, centre=None, shape=None, density=940.0, pack=False):
         max_buffer = 10_000_000
         data_buffer = []
         for x_index, x_slice in enumerate(packer):
-
             # Read the coordinates. The packer goes along the z axis so we need to
             # flip the coordinates since we want x slices
             coords = []
@@ -277,7 +273,6 @@ def add_ice(sample, centre=None, shape=None, density=940.0, pack=False):
             H2 = rotation.apply(water_coords.iloc[2].copy()) + coords
 
             def create_atom_data(atomic_number, coords):
-
                 # Create a new array
                 def new_array(size, name, value):
                     return (
@@ -366,7 +361,7 @@ def new(config_file, sample_file: str) -> Sample:
     return _new_Config(config, sample_file)
 
 
-@new.register
+@new.register(parakeet.config.Config)
 def _new_Config(config: parakeet.config.Config, filename: str) -> Sample:
     """
     Create the sample
@@ -382,7 +377,7 @@ def _new_Config(config: parakeet.config.Config, filename: str) -> Sample:
     return _new_Sample(config.sample, filename)
 
 
-@new.register
+@new.register(parakeet.config.Sample)
 def _new_Sample(config: parakeet.config.Sample, filename: str) -> Sample:
     """
     Create the sample
@@ -422,12 +417,18 @@ def _new_Sample(config: parakeet.config.Sample, filename: str) -> Sample:
         if coords.recentre:
             atoms.data = recentre(atoms.data)
             position = sample.centre
+            orientation = (0, 0, 0)
         else:
             position = (0, 0, 0)
+            orientation = (0, 0, 0)
+        if coords.position:
+            position = coords.position  # type: ignore
+        if coords.orientation:
+            orientation = coords.orientation  # type: ignore
 
         # Add the molecule
         sample.add_molecule(
-            atoms, positions=[position], orientations=[(0, 0, 0)], name=None
+            atoms, positions=[position], orientations=[orientation], name=None
         )
 
     # Print some info

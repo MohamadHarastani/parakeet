@@ -8,7 +8,7 @@
 # This code is distributed under the GPLv3 license, a copy of
 # which is included in the root directory of this package.
 #
-from __future__ import annotations
+
 
 import logging
 import logging.config
@@ -18,6 +18,7 @@ import parakeet.io
 import parakeet.config
 import parakeet.sample
 from argparse import ArgumentParser
+from typing import List
 
 
 __all__ = ["export"]
@@ -322,7 +323,6 @@ def export_impl(args):
             min_image = []
             max_image = []
             for i in indices:
-
                 # Transform if necessary
                 image = {
                     "complex": lambda x: x,
@@ -396,7 +396,7 @@ def export_impl(args):
     writer.update()
 
 
-def export(args: list[str] = None):
+def export(args: List[str] = None):
     """
     Convert the input file type to a different file type
 

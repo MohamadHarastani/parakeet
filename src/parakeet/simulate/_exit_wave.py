@@ -162,6 +162,8 @@ class ExitWaveImageSimulator(object):
         logger.info(f"Simulating image {index+1}")
 
         # Get the rotation angle
+        image_number = self.scan.image_number[index]
+        fraction_number = self.scan.fraction_number[index]
         angle = self.scan.angles[index]
         axis = self.scan.axes[index]
         position = self.scan.position[index]
@@ -171,6 +173,7 @@ class ExitWaveImageSimulator(object):
         beam_tilt_theta = self.scan.beam_tilt_theta[index]
         beam_tilt_phi = self.scan.beam_tilt_phi[index]
         exposure_time = self.scan.exposure_time[index]
+        electrons_per_angstrom = self.scan.electrons_per_angstrom[index]
 
         # The field of view
         nx = self.microscope.detector.nx
@@ -218,7 +221,7 @@ class ExitWaveImageSimulator(object):
                 * pi**2
                 * (
                     self.simulation["sensitivity_coefficient"]
-                    * self.microscope.beam.electrons_per_angstrom
+                    * electrons_per_angstrom
                     * (index + 1)
                 )
             )
@@ -274,7 +277,6 @@ class ExitWaveImageSimulator(object):
             )
 
         if self.simulation["ice"] == True:
-
             # Get the masker
             masker = self.get_masker(
                 index,
@@ -291,7 +293,6 @@ class ExitWaveImageSimulator(object):
             output_multislice = multem.simulate(system_conf, input_multislice, masker)
 
         else:
-
             # Run the simulation
             logger.info("Simulating")
             output_multislice = multem.simulate(system_conf, input_multislice)
@@ -312,6 +313,8 @@ class ExitWaveImageSimulator(object):
 
         # Set the metaadata
         metadata = self.metadata[index]
+        metadata["image_number"] = image_number
+        metadata["fraction_number"] = fraction_number
         metadata["timestamp"] = timestamp
         metadata["tilt_alpha"] = angle
         metadata["tilt_axis_x"] = axis[0]
@@ -332,6 +335,7 @@ class ExitWaveImageSimulator(object):
         metadata["damage_model"] = self.simulation["radiation_damage_model"]
         metadata["sensitivity_coefficient"] = self.simulation["sensitivity_coefficient"]
         metadata["exposure_time"] = exposure_time
+        metadata["dose"] = electrons_per_angstrom
 
         # Compute the image scaled with Poisson noise
         return (index, image, metadata)
@@ -426,7 +430,7 @@ def exit_wave(
     _exit_wave_Config(config, sample, exit_wave_file)
 
 
-@exit_wave.register
+@exit_wave.register(parakeet.config.Config)
 def _exit_wave_Config(
     config: parakeet.config.Config, sample: parakeet.sample.Sample, exit_wave_file: str
 ):
@@ -447,7 +451,10 @@ def _exit_wave_Config(
     if config.scan.step_pos == "auto":
         radius = sample.shape_radius
         config.scan.step_pos = config.scan.step_angle * radius * pi / 180.0
-    scan = parakeet.scan.new(**config.scan.dict())
+    scan = parakeet.scan.new(
+        electrons_per_angstrom=microscope.beam.electrons_per_angstrom,
+        **config.scan.dict(),
+    )
 
     # Create the simulation
     simulation = simulation_factory(

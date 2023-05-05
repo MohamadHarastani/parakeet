@@ -10,6 +10,7 @@
 #
 import copy
 import logging
+import os
 import yaml
 
 from enum import Enum
@@ -40,7 +41,6 @@ class BaseModel(PydanticBaseModel):
     """
 
     class Config:
-
         # Ensure that enums use string values
         use_enum_values = True
 
@@ -170,9 +170,10 @@ class MoleculePose(BaseModel):
 
     orientation: Optional[Tuple[float, float, float]] = Field(
         description=(
-            "The molecule orientation defined as a rotation vector. Setting "
-            "this to null or an empty list will cause parakeet to give a "
-            "random orientation"
+            "The molecule orientation defined as a rotation vector where "
+            "the direction of the vector gives the rotation axis and the "
+            "magnitude of the vector gives the rotation angle in radians. Setting "
+            "this to null or an empty list will cause parakeet to give a random orientation"
         ),
         examples=[
             "orienation: null # Assign random orienation",
@@ -193,6 +194,31 @@ class CoordinateFile(BaseModel):
     )
 
     recentre: bool = Field(True, description="Recentre the coordinates")
+
+    position: Optional[Tuple[float, float, float]] = Field(
+        description=(
+            "The model position (A, A, A). "
+            "If recentre if set then the model will be centred on the given position. "
+            "If recentre if not set then the model will be translated by the given position. "
+        ),
+        examples=[
+            "position: null # Assign [0, 0, 0] position",
+            "position: [1, 2, 3] # Assign known position",
+        ],
+    )
+
+    orientation: Optional[Tuple[float, float, float]] = Field(
+        description=(
+            "The model orientation defined as a rotation vector where "
+            "the direction of the vector gives the rotation axis and the "
+            "magnitude of the vector gives the rotation angle in radians. Setting "
+            "this to null or an empty list will cause parakeet to give a zero orientation"
+        ),
+        examples=[
+            "orienation: null # Assign [0, 0, 0] orienation",
+            "orienation: [1, 2, 3] # Assign known orienation",
+        ],
+    )
 
 
 class LocalMolecule(BaseModel):
@@ -345,10 +371,13 @@ class Beam(BaseModel):
     )
 
     electrons_per_angstrom: float = Field(
-        30, description="The number of electrons per square angstrom"
+        140,
+        description="The number of electrons per square angstrom. This is the dose per image (across all fractions).",
     )
 
-    source_spread: float = Field(0.1, description="The source spread (mrad).")
+    illumination_semiangle: float = Field(
+        0.02, description="The illumination semiangle (mrad)."
+    )
 
     theta: float = Field(0, description="The beam tilt theta angle (deg)")
 
@@ -486,9 +515,15 @@ class Drift(BaseModel):
 
     """
 
-    magnitude: float = Field(0, description="The magnitude of the drift (A)")
-
-    kernel_size: int = Field(0, description="How much to smooth the drift")
+    x: Union[float, Tuple[float, float]] = Field(
+        0, description="The model for the x drift a + b*theta**4 (A)"
+    )
+    y: Union[float, Tuple[float, float]] = Field(
+        0, description="The model for the y drift a + b*theta**4 (A)"
+    )
+    z: Union[float, Tuple[float, float]] = Field(
+        0, description="The model for the z drift a + b*theta**4 (A)"
+    )
 
 
 class Scan(BaseModel):
@@ -515,7 +550,24 @@ class Scan(BaseModel):
         "auto", description="The step distance for a translational scan (A)"
     )
 
-    num_images: int = Field(1, description="The number of images to simulate")
+    num_images: int = Field(
+        1,
+        description=(
+            "The number of images to simulate. "
+            "For a tilt series this is the number of tilt steps. "
+            "If num_fractions is also set to something other than 1, "
+            "then there will be num_fractions number of 'movie frames' per 'image'"
+        ),
+    )
+
+    num_fractions: int = Field(
+        1,
+        description=(
+            "The number of movie frames. This refers to the frames of the micrograph 'movies'. "
+            "For a tilt series, all these images will be at the same step and the dose for a 'single image' "
+            "will be fractionated over these image frames"
+        ),
+    )
 
     num_nhelix: int = Field(1, description="The number of scans in an n-helix")
 
@@ -611,7 +663,13 @@ class Simulation(BaseModel):
     )
 
     sensitivity_coefficient: float = Field(
-        0.022, description="The radiation damage model sensitivity coefficient"
+        0.022,
+        description=(
+            "The radiation damage model sensitivity coefficient. "
+            "This value relates the value of an isotropic B factor to the number of "
+            "incident electrons. Typical values for this (calibrated from X-ray and EM data) "
+            "range between 0.02 and 0.08 where a higher value will result in a larger B factor."
+        ),
     )
 
 
@@ -744,7 +802,11 @@ def new(filename: str = "config.yaml", full: bool = False) -> Config:
     else:
         include = {
             "microscope": {
-                "beam": {"electrons_per_angstrom", "energy", "source_spread"},
+                "beam": {
+                    "electrons_per_angstrom",
+                    "energy",
+                    "illumination_semiangle",
+                },
                 "detector": {
                     "nx",
                     "ny",
@@ -813,16 +875,39 @@ def edit(
     return config
 
 
-def show(config: Config, full: bool = False):
+def show(config: Config, full: bool = False, schema: str = None):
     """
     Print the command line arguments
 
     Args:
         config: The configuration object
         full: Show the full configuration (True or False)
+        schema: Show the schema
 
     """
-    return yaml.safe_dump(config.dict(exclude_unset=not full), indent=4)
+    if schema:
+        if schema in ["."]:
+            d = config.schema()
+        elif schema.startswith("/definitions/"):
+            schema = os.path.basename(schema)
+            try:
+                d = config.schema()["definitions"][schema]
+            except Exception as e:
+                raise RuntimeError(
+                    "Unable to find definition '%s' in\n%s"
+                    % (
+                        schema,
+                        "\n".join(
+                            " - %s" % v
+                            for v in sorted(config.schema()["definitions"].keys())
+                        ),
+                    )
+                )
+        else:
+            raise RuntimeError("Unknown scheme value '%s' (see help)" % schema)
+    else:
+        d = config.dict(exclude_unset=not full)
+    return yaml.safe_dump(d, indent=4)
 
 
 def deepmerge(a: dict, b: dict) -> dict:

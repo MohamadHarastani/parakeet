@@ -5,7 +5,7 @@ import parakeet.scan
 
 def test_none():
     scan = parakeet.scan.new(mode=None)
-    assert np.all(np.equal(scan.axes, np.array([[0, 0, 0]])))
+    assert np.all(np.equal(scan.axes, np.array([[0, 1, 0]])))
     assert np.all(np.equal(scan.angles, np.array([0])))
     assert np.all(np.equal(scan.position, np.array([(0, 0, 0)])))
 
@@ -21,7 +21,7 @@ def test_manual():
 
 def test_still():
     scan = parakeet.scan.new(mode="still")
-    assert np.all(np.equal(scan.axes, np.array([[0, 0, 0]])))
+    assert np.all(np.equal(scan.axes, np.array([[0, 1, 0]])))
     assert np.all(np.equal(scan.angles, np.array([0])))
     assert np.all(np.equal(scan.position, np.array([(0, 0, 0)])))
 
@@ -92,7 +92,6 @@ def test_nhelix():
 
 
 def test_single_particle():
-
     scan = parakeet.scan.new(
         mode="single_particle",
         num_images=8,
@@ -124,6 +123,5 @@ def test_beam_tilt():
 
 
 def test_unknown():
-
     with pytest.raises(KeyError):
         scan = parakeet.scan.new("unknown")

@@ -8,20 +8,17 @@
 # This code is distributed under the GPLv3 license, a copy of
 # which is included in the root directory of this package.
 #
-import functools
 import h5py
 import numpy as np
 import mrcfile
 import os
 import PIL.Image
 import parakeet
-from math import pi
 
 try:
     FEI_EXTENDED_HEADER_DTYPE = mrcfile.dtypes.FEI1_EXTENDED_HEADER_DTYPE
 except Exception:
     FEI_EXTENDED_HEADER_DTYPE = mrcfile.dtypes.get_ext_header_dtype(b"FEI1")
-
 
 METADATA_DTYPE = np.dtype(
     [
@@ -31,6 +28,11 @@ METADATA_DTYPE = np.dtype(
         ("application", "S16"),
         ("application_version", "S16"),
         ("timestamp", "f8"),
+        #
+        # Scan parameters
+        #
+        ("image_number", "i4"),
+        ("fraction_number", "i4"),
         #
         # Stage parameters
         #
@@ -54,7 +56,7 @@ METADATA_DTYPE = np.dtype(
         ("energy_shift", "f8"),
         ("acceleration_voltage_spread", "f8"),
         ("energy_spread", "f8"),
-        ("source_spread", "f8"),
+        ("illumination_semiangle", "f8"),
         ("exposure_time", "f8"),
         ("theta", "f8"),
         ("phi", "f8"),
@@ -247,39 +249,28 @@ class Header(object):
 
     """
 
-    @functools.singledispatchmethod
     def __getitem__(self, item):
         """
         Get a row or column item
 
         """
-        return Row(self, item)
+        if isinstance(item, str):
+            Class = Column
+        else:
+            Class = Row
+        return Class(self, item)
 
-    @__getitem__.register
-    def _(self, item: str):
-        """
-        Get a row or column item
-
-        """
-        return Column(self, item)
-
-    @functools.singledispatchmethod
     def __setitem__(self, item, value):
         """
         Set a row or column item
 
         """
-        row = Row(self, item)
-        row.assign(value)
-
-    @__setitem__.register
-    def _(self, item: str, value):
-        """
-        Set a row or column item
-
-        """
-        col = Column(self, item)
-        col[:] = value
+        if isinstance(item, str):
+            col = Column(self, item)
+            col[:] = value
+        else:
+            row = Row(self, item)
+            row.assign(value)
 
     def rows(self):
         """
@@ -373,11 +364,11 @@ class Header(object):
         metadata = np.array(self)
 
         # Construct the orientation
-        orientation = np.stack(
+        axis = np.stack(
             [
-                metadata["tilt_axis_x"] * metadata["tilt_alpha"] * pi / 180.0,
-                metadata["tilt_axis_y"] * metadata["tilt_alpha"] * pi / 180.0,
-                metadata["tilt_axis_z"] * metadata["tilt_alpha"] * pi / 180.0,
+                metadata["tilt_axis_x"],
+                metadata["tilt_axis_y"],
+                metadata["tilt_axis_z"],
             ]
         ).T
 
@@ -397,7 +388,10 @@ class Header(object):
 
         # Return a scan object
         return parakeet.scan.Scan(
-            orientation=orientation,
+            image_number=metadata["image_number"],
+            fraction_number=metadata["fraction_number"],
+            axis=axis,
+            angle=metadata["tilt_alpha"],
             shift=shift,
             shift_delta=shift_delta,
             beam_tilt_theta=metadata["theta"],
@@ -498,6 +492,11 @@ class MrcfileHeader(Header):
             "application": "Application",
             "application_version": "Application version",
             "timestamp": "Timestamp",
+            #
+            # Scan parameters
+            #
+            "image_number": "Start frame",
+            "fraction_number": "Fraction number",
             #
             # Stage parameters
             #
@@ -683,6 +682,48 @@ class NexusHeader(Header):
         return self._handle["data"].shape[0]
 
 
+class ImageHeader(Header):
+    """
+    A sub class for an image header
+
+    """
+
+    def __init__(self, handle):
+        self._handle = handle
+
+    def mapping(self, key):
+        """
+        Get the mapping between names
+
+        """
+        assert key in self.dtype.fields
+        return key
+
+    def get(self, index, key):
+        """
+        Get the mapping between names
+
+        """
+        mapping = self.mapping(key)
+        return self._handle[mapping][index]
+
+    def set(self, index, key, value):
+        """
+        Set the value of a property
+
+        """
+        mapping = self.mapping(key)
+        self._handle[mapping][index] = value
+
+    @property
+    def size(self):
+        """
+        Get the size of the header
+
+        """
+        return self._handle.shape[0]
+
+
 class NexusWriter(Writer):
     """
     Write to a nexus file
@@ -770,7 +811,6 @@ class ImageWriter(Writer):
             self.vmax = vmax
 
         def __setitem__(self, item, data):
-
             # Check the input
             assert isinstance(item, tuple)
             assert isinstance(item[1], slice)
@@ -822,7 +862,7 @@ class ImageWriter(Writer):
         self._data = ImageWriter.DataProxy(template, shape, vmin, vmax)
 
         # Create dummy arrays for angle and position
-        self._header = np.zeros(shape=shape[0], dtype=METADATA_DTYPE)
+        self._header = ImageHeader(np.zeros(shape=shape[0], dtype=METADATA_DTYPE))
 
     @property
     def vmin(self):
@@ -958,7 +998,7 @@ class Reader(object):
         header = MrcfileHeader(extended_header)
 
         # Get the pixel size
-        pixel_size = handle.voxel_size["x"]
+        pixel_size = float(handle.voxel_size["x"])
 
         # Create the reader
         return Reader(

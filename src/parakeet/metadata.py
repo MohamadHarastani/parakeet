@@ -162,7 +162,6 @@ class RelionMetadataExporter(object):
         """
 
         for i in range(1, self.config.scan.num_images + 1):
-
             # Create the dictionary
             data = {
                 "picking": pd.DataFrame.from_dict(
@@ -240,7 +239,7 @@ def export(config_file, sample_file: str, directory: str = ".", relion: bool = T
     return _export_Config(config, sample)
 
 
-@export.register
+@export.register(parakeet.config.Config)
 def _export_Config(
     config: parakeet.config.Config,
     sample: Sample,

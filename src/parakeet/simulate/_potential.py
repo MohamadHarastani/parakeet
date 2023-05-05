@@ -274,7 +274,7 @@ def potential(
     _potential_Config(config, sample_file, potential_prefix)
 
 
-@potential.register
+@potential.register(parakeet.config.Config)
 def _potential_Config(
     config: parakeet.config.Config, sample_file: str, potential_prefix: str
 ):
@@ -299,7 +299,10 @@ def _potential_Config(
     if config.scan.step_pos == "auto":
         radius = sample.shape_radius
         config.scan.step_pos = config.scan.step_angle * radius * pi / 180.0
-    scan = parakeet.scan.new(**config.scan.dict())
+    scan = parakeet.scan.new(
+        electrons_per_angstrom=microscope.beam.electrons_per_angstrom,
+        **config.scan.dict(),
+    )
 
     # Create the simulation
     simulation = simulation_factory(
